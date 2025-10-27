@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ios-toolkit"
 version = "0.1.0"
@@ -17,6 +21,9 @@ dependencies = [
 
 [tool.pytest.ini_options]
 addopts = "-q"
+
+[tool.setuptools]
+packages = ["ios_toolkit"]
 
 [tool.ruff]
 target-version = "py310"
