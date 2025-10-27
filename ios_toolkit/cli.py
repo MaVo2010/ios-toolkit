@@ -9,11 +9,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, device, ipsw, logs, models, recovery, restore, utils
+from . import __version__, device, dfu, ipsw, logs, models, recovery, restore, utils
 
 app = typer.Typer(help="Windows CLI-Tool: iOS-Geraete erkennen, Logs, Recovery/DFU, Flashen")
 ipsw_app = typer.Typer(help="IPSW Utilities")
+dfu_app = typer.Typer(help="DFU-Assistent")
 app.add_typer(ipsw_app, name="ipsw")
+app.add_typer(dfu_app, name="dfu")
 console = Console()
 
 
@@ -49,6 +51,44 @@ def ipsw_verify_cmd(
         else:
             typer.echo(f"Validation failed: {result.get('error', 'unknown error')}", err=True)
     raise typer.Exit(0 if result["ok"] else 2)
+
+
+@dfu_app.command("guide")
+def dfu_guide_cmd(
+    ctx: typer.Context,
+    udid: str = typer.Option(None, "--udid", help="UDID des Geraets (optional)"),
+    model: str = typer.Option(None, "--model", help="Produkt-Typ, z. B. iPhone12,8"),
+    countdown: bool = typer.Option(False, "--countdown/--no-countdown", help="Countdown je Schritt anzeigen"),
+    sound: bool = typer.Option(False, "--sound/--no-sound", help="Akustische Signale verwenden"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    product_type = model
+    if udid and not product_type:
+        try:
+            info = device.get_info(udid=udid)
+            product_type = info.product_type
+        except device.DeviceError as exc:
+            typer.echo(f"Konnte Geraeteinfo nicht abrufen: {exc}", err=True)
+            raise typer.Exit(1)
+
+    if not product_type:
+        typer.echo("Bitte --model angeben oder --udid verwenden.", err=True)
+        raise typer.Exit(2)
+
+    try:
+        if json_out:
+            instructions = dfu.get_instructions(product_type)
+            echo_json(instructions)
+        else:
+            dfu.guide(product_type=product_type, udid=udid, countdown=countdown, sound=sound)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2)
+    except Exception as exc:  # pragma: no cover - defensive
+        log = utils.get_logger(__name__)
+        log.error("DFU-Assistent fehlgeschlagen: %s", exc)
+        typer.echo(f"Fehler: {exc}", err=True)
+        raise typer.Exit(1)
 
 
 def _emit_device_error(exc: device.DeviceError, json_out: bool) -> None:
