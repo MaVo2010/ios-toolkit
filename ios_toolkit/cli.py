@@ -9,9 +9,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, device, logs, recovery, restore, models, utils
+from . import __version__, device, ipsw, logs, models, recovery, restore, utils
 
 app = typer.Typer(help="Windows CLI-Tool: iOS-Geraete erkennen, Logs, Recovery/DFU, Flashen")
+ipsw_app = typer.Typer(help="IPSW Utilities")
+app.add_typer(ipsw_app, name="ipsw")
 console = Console()
 
 
@@ -27,6 +29,26 @@ def _main_callback(
 
 def echo_json(data):
     typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@ipsw_app.command("verify")
+def ipsw_verify_cmd(
+    file: str = typer.Option(..., "--file", help="Pfad zur IPSW-Datei"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    result = ipsw.validate_ipsw(file)
+    if json_out:
+        echo_json(result)
+    else:
+        if result["ok"]:
+            typer.echo(f"IPSW OK | size={result['size']} | sha1={result['sha1']}")
+            if result.get("has_manifest"):
+                product = ipsw.product_from_manifest(file)
+                if product:
+                    typer.echo(f"Product: {product}")
+        else:
+            typer.echo(f"Validation failed: {result.get('error', 'unknown error')}", err=True)
+    raise typer.Exit(0 if result["ok"] else 2)
 
 
 def _emit_device_error(exc: device.DeviceError, json_out: bool) -> None:

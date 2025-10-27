@@ -13,3 +13,7 @@ py -m ios_toolkit.cli --help
 - Vorabpr�fung: `py -m ios_toolkit.cli flash --preflight-only --ipsw C:\Firmware\iPhone_123.ipsw --json`
 - Dry-Run (zeigt nur den Befehl): `py -m ios_toolkit.cli flash --dry-run --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw`
 - Voller Restore mit Timeout: `py -m ios_toolkit.cli flash --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw --wipe --timeout 3600 --json`
+
+## IPSW-Tools (M5)
+- Integrit�tscheck: `py -m ios_toolkit.cli ipsw verify --file C:\Firmware\iPhone_123.ipsw --json`
+- Ausgabe enth�lt SHA1, Dateigr��e und Manifest-Status.
