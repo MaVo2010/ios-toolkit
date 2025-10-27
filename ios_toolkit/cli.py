@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.console import Console
@@ -21,6 +22,8 @@ def _main_callback(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
 ) -> None:
     utils.configure_logging(log_dir=log_dir, verbose=verbose)
+    ctx.ensure_object(dict)
+    ctx.obj["log_dir"] = str(log_dir) if log_dir else None
 
 def echo_json(data):
     typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
@@ -137,18 +140,44 @@ def recovery_cmd(action: str = typer.Argument(..., help="enter | status | kickou
         raise typer.Exit(2)
 
 @app.command()
-def flash(udid: str = typer.Option(None, "--udid"),
-          ipsw: str = typer.Option(None, "--ipsw", help="Pfad zur IPSW-Datei"),
-          latest: bool = typer.Option(False, "--latest", help="Neueste Firmware (spaeter)"),
-          wipe: bool = typer.Option(True, "--wipe", help="Werkseinstellung"),
-          keep_logs: bool = typer.Option(False, "--keep-logs"),
-          json_out: bool = typer.Option(False, "--json")):
-    result = restore.restore(udid=udid, ipsw_path=ipsw, latest=latest, wipe=wipe, keep_logs=keep_logs)
+def flash(
+    ctx: typer.Context,
+    udid: str = typer.Option(None, "--udid"),
+    ipsw: str = typer.Option(None, "--ipsw", help="Pfad zur IPSW-Datei"),
+    latest: bool = typer.Option(False, "--latest", help="Neueste Firmware (spaeter)"),
+    wipe: bool = typer.Option(True, "--wipe", help="Werkseinstellung"),
+    keep_logs: bool = typer.Option(False, "--keep-logs"),
+    preflight_only: bool = typer.Option(False, "--preflight-only", help="Nur Vorabpruefungen ausfuehren"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Befehl anzeigen, aber nicht ausfuehren"),
+    timeout: Optional[int] = typer.Option(None, "--timeout", help="Timeout in Sekunden fuer idevicerestore"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    restore_kwargs = dict(
+        udid=udid,
+        ipsw_path=ipsw,
+        latest=latest,
+        wipe=wipe,
+        keep_logs=keep_logs,
+        preflight_only=preflight_only,
+        dry_run=dry_run,
+        timeout_sec=timeout,
+        log_dir=ctx.obj.get("log_dir") if ctx.obj else None,
+    )
+    result = restore.restore(**restore_kwargs)
+
     if json_out:
         echo_json(result.model_dump(mode="json"))
     else:
-        typer.echo(f"Status: {result.status} | Log: {result.logfile}")
-    raise typer.Exit(0 if result.status == "success" else 1)
+        typer.echo(f"Status: {result.status}")
+        typer.echo(f"Log: {result.logfile}")
+        for step in result.steps:
+            detail = f" ({step.detail})" if step.detail else ""
+            typer.echo(f"- {step.name}: {'ok' if step.ok else 'fail'}{detail}")
+
+    exit_code = 0
+    if result.status != "success":
+        exit_code = 2 if restore.is_validation_failure(result) else 1
+    raise typer.Exit(exit_code)
 
 @app.command()
 def diag(sub: str = typer.Argument(..., help="usb"), json_out: bool = typer.Option(False, "--json")):

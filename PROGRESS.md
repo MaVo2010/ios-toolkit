@@ -52,3 +52,18 @@
 ### Bekannte Punkte
 - Fehlende libimobiledevice-Binaries werden per Fehlerklassen gemeldet; pymobiledevice3 deckt Discovery/Info aktuell ab.
 - CI-Workflow laeuft nur auf Windows-Runnern; weitere Plattformen optional.
+
+## M4 - Restore/Flash
+- `ios_toolkit/restore.py` um Preflight-Checks, Dry-Run und Timeout erweitert; Schritte/Progress werden aus dem idevicerestore-Stream erkannt.
+- CLI `flash` bietet jetzt `--preflight-only`, `--dry-run`, `--timeout` sowie stabile Exit-Codes (0 Erfolg, 2 Validierungsfehler, 1 sonstige Fehler).
+- Neue Tests (`tests/test_restore.py`) decken Tool-Fehlen, IPSW-Validierung, Preflight, Dry-Run, Erfolg und Timeout ab.
+- `.gitignore` enth�lt tempor�re Testverzeichnisse.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+
+### Beispielausgaben
+- `py -m ios_toolkit.cli flash --preflight-only --ipsw C:\Firmware\iPhone_123.ipsw --json`
+- `py -m ios_toolkit.cli flash --dry-run --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw`
+- `py -m ios_toolkit.cli flash --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw --timeout 3600 --json`
