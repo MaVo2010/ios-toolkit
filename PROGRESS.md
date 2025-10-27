@@ -52,3 +52,18 @@
 ### Bekannte Punkte
 - Fehlende libimobiledevice-Binaries werden per Fehlerklassen gemeldet; pymobiledevice3 deckt Discovery/Info aktuell ab.
 - CI-Workflow laeuft nur auf Windows-Runnern; weitere Plattformen optional.
+
+## M2 - Logs
+- `ios_toolkit/logs.py` erweitert: Streaming via `idevicesyslog` mit Regex-Filter, optionaler Speicherung, Dauerbegrenzung und Logging.
+- Crashlog-Export umgesetzt (`export_crashlogs`) mit `idevicecrashreport`, Limitierung und JSON-Rueckgabe.
+- Neues CLI-Kommando `logs-crash` fuer Crash-Exports (`ios_toolkit/cli.py`).
+- Neue Tests (`tests/test_logs.py`) mocken Tools und pruefen Filter/Export-Logik.
+- Build-System (`pyproject.toml`) ergaenzt, damit nur `ios_toolkit` installiert wird, plus erweiterte `.gitignore`.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+
+### Beispielausgaben
+- `py -m ios_toolkit.cli logs --duration 2 --save logs\\syslog.log`
+- `py -m ios_toolkit.cli logs-crash --out crash_exports --limit 5 --json`

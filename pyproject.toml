@@ -28,7 +28,7 @@ packages = ["ios_toolkit"]
 [tool.ruff]
 target-version = "py310"
 line-length = 120
-exclude = ["schema_logging_patch", ".venv"]
+exclude = ["schema_logging_patch", ".venv", "snippets", "cli_add_logs_crash_snippet.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]

@@ -115,6 +115,35 @@ def logs_cmd(udid: str = typer.Option(None, "--udid"),
     rc = logs.stream_syslog(udid=udid, save_path=save, filter_expr=filter_expr, duration=duration)
     raise typer.Exit(rc)
 
+@app.command(name="logs-crash")
+def logs_crash_cmd(
+    udid: str = typer.Option(None, "--udid"),
+    out: str = typer.Option(..., "--out", help="Zielverzeichnis fuer Crashlogs"),
+    limit: int = typer.Option(20, "--limit", help="Maximale Anzahl Dateien"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    try:
+        result = logs.export_crashlogs(udid=udid, out_dir=out, limit=limit)
+    except Exception as exc:
+        if json_out:
+            echo_json({"status": "failure", "error": str(exc)})
+        else:
+            typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1)
+
+    if json_out:
+        echo_json({"status": "success", **result})
+    else:
+        exported = result.get("exported", [])
+        skipped = result.get("skipped", 0)
+        typer.echo(f"Exported: {len(exported)} files | Skipped: {skipped}")
+        if exported:
+            typer.echo("Files:")
+            for path in exported:
+                typer.echo(f"  {path}")
+        typer.echo(f"Destination: {out}")
+    raise typer.Exit(0)
+
 @app.command(name="recovery")
 def recovery_cmd(action: str = typer.Argument(..., help="enter | status | kickout"),
                  udid: str = typer.Option(None, "--udid"),
