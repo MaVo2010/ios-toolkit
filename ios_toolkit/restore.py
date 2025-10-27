@@ -5,11 +5,11 @@ import shutil
 import subprocess
 import threading
 import time
-import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
+from . import ipsw as ipsw_utils
 from . import models, utils
 
 log = utils.get_logger(__name__)
@@ -29,14 +29,14 @@ STEP_PATTERNS = [
 VALIDATION_STEPS = {
     "check_idevicerestore",
     "ipsw_exists",
-    "validate_ipsw",
+    "ipsw_validated",
     "disk_free_gb",
     "preflight",
     "resolve_latest_ipsw",
 }
 
 # Optional checks do not contribute to overall preflight ok-state.
-OPTIONAL_CHECKS = {"amds_running", "device_info", "ipsw_zip_ok"}
+OPTIONAL_CHECKS = {"amds_running", "device_info"}
 
 
 def _have(cmd: str) -> bool:
@@ -114,32 +114,23 @@ def preflight_checks(
     ipsw = Path(ipsw_path) if ipsw_path else None
     if ipsw is None:
         add_check("ipsw_exists", False, error="no IPSW path provided")
-        add_check("validate_ipsw", False, error="no IPSW path provided")
     else:
         exists = ipsw.exists()
         add_check("ipsw_exists", exists, path=str(ipsw))
-        if not exists:
-            add_check("validate_ipsw", False, error="IPSW not found")
-        else:
-            suffix_ok = ipsw.suffix.lower() == ".ipsw"
-            size = ipsw.stat().st_size
-            size_ok = size > 0
-            zip_ok = False
-            if suffix_ok and size_ok:
-                try:
-                    with zipfile.ZipFile(ipsw):
-                        zip_ok = True
-                except Exception as exc:
-                    zip_ok = False
-                    log.warning("IPSW zip check failed for %s: %s", ipsw, exc)
+        if exists:
+            validation = ipsw_utils.validate_ipsw(str(ipsw))
             add_check(
-                "validate_ipsw",
-                suffix_ok and size_ok and zip_ok,
-                suffix=ipsw.suffix.lower(),
-                size=size,
-                error=None if suffix_ok and size_ok and zip_ok else "invalid IPSW content",
+                "ipsw_validated",
+                validation["ok"],
+                sha1=validation.get("sha1"),
+                size=validation.get("size"),
+                has_manifest=validation.get("has_manifest"),
+                error=validation.get("error"),
             )
-            add_check("ipsw_zip_ok", zip_ok)
+            if validation["ok"] and validation.get("sha1"):
+                log.info("Validated IPSW %s sha1=%s", ipsw, validation["sha1"])
+        else:
+            add_check("ipsw_validated", False, error="IPSW not found")
 
     disk_target = Path(log_dir) if log_dir else Path.cwd()
     try:

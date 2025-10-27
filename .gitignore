@@ -8,3 +8,4 @@ build/
 tmp-test-logs/
 tmp-test-restore/
 codex_prompt_M4.txt
+tmp-test-ipsw/

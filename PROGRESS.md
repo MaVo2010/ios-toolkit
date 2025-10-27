@@ -67,3 +67,13 @@
 - `py -m ios_toolkit.cli flash --preflight-only --ipsw C:\Firmware\iPhone_123.ipsw --json`
 - `py -m ios_toolkit.cli flash --dry-run --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw`
 - `py -m ios_toolkit.cli flash --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw --timeout 3600 --json`
+\n## M5 - IPSW Management
+- ios_toolkit/ipsw.py hinzugefuegt: lokale Validierung (SHA1, ZIP-Test, Manifest) und Produkt-Typ-Auslese.
+- Neues CLI-Kommando ipsw verify prueft Dateien und liefert Exit-Code 2 bei Validierungsfehlern.
+- Restore-Preflight nutzt nun validate_ipsw(); Checks enthalten SHA1/Manifest-Details.
+\n### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+\n### Beispielausgaben
+- `py -m ios_toolkit.cli ipsw verify --file C:\Firmware\iPhone_123.ipsw --json`
+- `py -m ios_toolkit.cli flash --latest --ipsw C:\Firmware\iPhone_123.ipsw --json`
