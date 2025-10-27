@@ -1,0 +1,27 @@
+[project]
+name = "ios-toolkit"
+version = "0.1.0"
+description = "Windows CLI-Tool: iOS-Geraete erkennen, Logs, Recovery/DFU, Flashen (Scaffold)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Corp IT", email = "it@example.com" }]
+dependencies = [
+    "typer[all]",
+    "rich",
+    "pydantic",
+    "pyyaml",
+    "psutil",
+    "colorama",
+    "pymobiledevice3",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+exclude = ["schema_logging_patch", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]

@@ -1,0 +1,82 @@
+Rolle: Du agierst vorsichtig, deterministisch und in kleinen, überprüfbaren Schritten. Du initialisierst Git, richtest die GitHub-Remote via GH-CLI ein, committest den aktuellen Stand, setzt ein Versionstag und validierst, dass CI losläuft. Arbeite IM PROJEKTROOT (dort wo ios_toolkit/, requirements.txt und .github/ liegen).
+
+Voraussetzungen:
+- Git und GitHub CLI (gh) sind installiert.
+- Ziel-Repo: https://github.com/mavo2010/ios-toolkit.git
+- Git-Config lokal: user.name "mavo2010", user.email "marvin.nestler@gmail.com"
+
+Schritte:
+
+1) Git initialisieren & konfigurieren
+   - if exist .git (dir) → überspringe init
+   - sonst:
+     - git init -b main
+   - git config user.name "mavo2010"
+   - git config user.email "marvin.nestler@gmail.com"
+
+2) .gitignore sicherstellen (nur anlegen, wenn nicht vorhanden)
+   Inhalt falls neu:
+.venv/
+pycache/
+dist/
+build/
+*.spec
+*.log
+*.tmp
+
+- Wenn bereits vorhanden: nicht überschreiben.
+
+3) Erster Commit
+- git add -A
+- git commit -m "chore(scaffold): initial import with schema/logging/ci" || echo "nothing to commit"
+
+4) GitHub-Login (Device Flow)
+- gh --version
+- gh auth status || gh auth login -s "repo,workflow" -w
+
+5) Remote einrichten
+- Prüfe, ob das Repo auf GitHub existiert:
+  - gh repo view mavo2010/ios-toolkit --json name || ^
+    gh repo create mavo2010/ios-toolkit --private --source . --remote origin --push
+- Falls `gh repo view` erfolgreich war (Repo existiert), dann:
+  - if not exist remote "origin":
+      git remote add origin https://github.com/mavo2010/ios-toolkit.git
+  - git push -u origin main
+
+6) Versionstag setzen
+- Lies die Version aus `ios_toolkit/__init__.py` (falls vorhanden). Beispiel:
+  - python - <<'PY'
+from pathlib import Path
+import re
+p = Path("ios_toolkit/__init__.py")
+ver = "0.2.0"
+if p.exists():
+ m = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', p.read_text(encoding="utf-8"))
+ if m: ver = m.group(1)
+print(ver)
+PY
+- Erzeuge Tag `v<Version>` wenn nicht vorhanden:
+  - git tag -l | findstr /C:"v<Version>"
+  - falls nicht gefunden:
+      git tag v<Version>
+      git push --tags
+
+7) CI-Sanity
+- Stelle sicher, dass `.github/workflows/ci.yml` existiert (sollte bereits im Repo sein).
+- Wenn Remote vorhanden/pushed: CI-Run startet automatisch. (Optional lokal checken:)
+  - gh run list -R mavo2010/ios-toolkit --limit 1
+
+8) Lokale Smoke-Checks (nur Befehle ausführen, keine Änderungen)
+- py -m pip install -r requirements.txt
+- py -m pip install -r requirements-dev.txt
+- ruff check .
+- pytest -q
+- py -m ios_toolkit.cli --help
+- py -m ios_toolkit.cli list --json
+- py -m ios_toolkit.cli info --json
+
+Erfolgskriterien:
+- `git status` ist clean.
+- `git remote -v` zeigt `origin` → https://github.com/mavo2010/ios-toolkit.git
+- Ein Git-Tag `v<Version>` existiert (und ggf. auf GitHub gepusht).
+- CI-Workflow ist im GitHub-Repo sichtbar.
