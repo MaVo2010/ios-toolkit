@@ -67,3 +67,17 @@
 ### Beispielausgaben
 - `py -m ios_toolkit.cli logs --duration 2 --save logs\\syslog.log`
 - `py -m ios_toolkit.cli logs-crash --out crash_exports --limit 5 --json`
+ 
+## M3 - Recovery/DFU
+- `ios_toolkit/recovery.py` implementiert: enter (idevicediagnostics), status (irecovery -q), kickout (irecovery -n) mit Logging und robustem Parser.
+- CLI `recovery status` setzt Exit-Codes (0=ok, 1=unknown/Fehler, 2=Tool fehlt) und gibt Fehlerhinweise aus.
+- Neue Tests (`tests/test_recovery.py`) decken Parser, Tool-Missing und Erfolgs-/Fehlerpfade ab.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+
+### Beispielausgaben
+- `py -m ios_toolkit.cli recovery status --json`
+- `py -m ios_toolkit.cli recovery enter --udid <UDID>`
+- `py -m ios_toolkit.cli recovery kickout --udid <UDID>`

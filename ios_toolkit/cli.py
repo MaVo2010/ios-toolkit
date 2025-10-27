@@ -157,7 +157,20 @@ def recovery_cmd(action: str = typer.Argument(..., help="enter | status | kickou
         if json_out:
             echo_json(data)
         else:
-            typer.echo(f"Modus: {data.get('mode','unknown')}")
+            typer.echo(f"Modus: {data.get('mode', 'unknown')}")
+            if data.get("error"):
+                typer.echo(f"Error: {data['error']}", err=True)
+            if data.get("tool_missing"):
+                typer.echo("Hint: irecovery not found.", err=True)
+            if data.get("raw"):
+                typer.echo("Raw output:", err=True)
+                typer.echo(data["raw"], err=True)
+        exit_code = 0
+        if data.get("tool_missing"):
+            exit_code = 2
+        elif data.get("error") or data.get("mode") == "unknown":
+            exit_code = 1
+        raise typer.Exit(exit_code)
     elif action == "kickout":
         ok = recovery.kickout(udid=udid)
         raise typer.Exit(0 if ok else 1)
