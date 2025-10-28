@@ -9,14 +9,14 @@ runner = CliRunner()
 
 
 def test_list_json_no_devices(monkeypatch):
-    monkeypatch.setattr(device, "list_devices", lambda: [])
+    monkeypatch.setattr(device, "list_devices", lambda include_dfu=False: [])
     result = runner.invoke(cli.app, ["list", "--json"])
     assert result.exit_code == 0
     assert json.loads(result.stdout) == []
 
 
 def test_list_json_reports_missing_tools(monkeypatch):
-    def _fake():
+    def _fake(include_dfu=False):
         raise device.DeviceToolMissingError(["idevice_id"])
 
     monkeypatch.setattr(device, "list_devices", _fake)

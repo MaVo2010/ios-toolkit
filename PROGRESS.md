@@ -57,7 +57,7 @@
 - `ios_toolkit/restore.py` um Preflight-Checks, Dry-Run und Timeout erweitert; Schritte/Progress werden aus dem idevicerestore-Stream erkannt.
 - CLI `flash` bietet jetzt `--preflight-only`, `--dry-run`, `--timeout` sowie stabile Exit-Codes (0 Erfolg, 2 Validierungsfehler, 1 sonstige Fehler).
 - Neue Tests (`tests/test_restore.py`) decken Tool-Fehlen, IPSW-Validierung, Preflight, Dry-Run, Erfolg und Timeout ab.
-- `.gitignore` enth�lt tempor�re Testverzeichnisse.
+- `.gitignore` enthaelt temporaere Testverzeichnisse.
 
 ### Tests
 - `py -m ruff check .`
@@ -67,3 +67,44 @@
 - `py -m ios_toolkit.cli flash --preflight-only --ipsw C:\Firmware\iPhone_123.ipsw --json`
 - `py -m ios_toolkit.cli flash --dry-run --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw`
 - `py -m ios_toolkit.cli flash --udid <UDID> --ipsw C:\Firmware\iPhone_123.ipsw --timeout 3600 --json`
+
+## M5 - IPSW Management
+- `ios_toolkit/ipsw.py` hinzugefuegt: lokale Validierung (SHA1, ZIP-Test, Manifest) und Produkt-Typ-Auslese.
+- Neues CLI-Kommando `ipsw verify` prueft Dateien und liefert Exit-Code 2 bei Validierungsfehlern.
+- Restore-Preflight nutzt nun `validate_ipsw()`; Checks enthalten SHA1/Manifest-Details.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+
+### Beispielausgaben
+- `py -m ios_toolkit.cli ipsw verify --file C:\Firmware\iPhone_123.ipsw --json`
+- `py -m ios_toolkit.cli flash --latest --ipsw C:\Firmware\iPhone_123.ipsw --json`
+
+## M6 - DFU & Diagnose
+- `ios_toolkit/dfu.py` liefert modellbasierte DFU-Anleitungen und einen interaktiven Guide (Countdown/Sound optional).
+- CLI `dfu guide` unterstuetzt `--model`/`--udid`, JSON-Ausgabe sowie interaktive Fuehrung.
+- USB-Diagnose (`diag usb`) prueft AMDS-Service ueber PowerShell/`sc`, listet fehlende Tools und gibt PATH-Hinweise aus.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+
+### Beispielausgaben
+- `py -m ios_toolkit.cli dfu guide --model iPhone12,8 --json`
+- `py -m ios_toolkit.cli diag usb --json`
+
+## M7 - Packaging & Releases
+- PyInstaller Build-Skript (`scripts/build_windows.ps1`) erstellt eine portable Windows-EXE.
+- GitHub Actions Workflow `release.yml` baut bei Tags (`v*`) und haengt `ios-toolkit.exe` an Releases an.
+- Version auf 0.6.0 erhoeht; Anforderungen in `pyproject.toml`/`requirements-dev.txt` angepasst.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+- `pwsh scripts/build_windows.ps1`
+
+### Beispielausgaben
+- `.\dist\ios-toolkit.exe --help`
+- `.\dist\ios-toolkit.exe list --json`
+

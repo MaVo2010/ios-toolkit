@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -58,6 +59,23 @@ class CommandResult:
 
 def _have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
+
+
+def detect_dfu() -> bool:
+    """Return True if irecovery reports DFU mode; never raises."""
+    if not _have("irecovery"):
+        return False
+
+    result = _call(["irecovery", "-q"])
+    if not result.ok or not result.stdout:
+        return False
+
+    kv = _parse_kv_text(result.stdout)
+    mode_value = kv.get("MODE") or kv.get("Mode") or kv.get("mode")
+    if mode_value and mode_value.strip().lower() == "dfu":
+        return True
+
+    return False
 
 
 def _call(cmd: Sequence[str], timeout: int = 10) -> CommandResult:
@@ -214,35 +232,47 @@ def _discover_devices() -> Tuple[list[dict], list[str], bool]:
     return list(devices.values()), missing_tools, any_tool_available
 
 
-def list_devices() -> list[models.Device]:
+def list_devices(include_dfu: bool = False) -> list[models.Device]:
     discovered, missing_tools, any_tool = _discover_devices()
-    if not discovered:
-        if not any_tool:
-            # Without any discovery tooling we cannot proceed.
-            if missing_tools:
-                raise DeviceToolMissingError(missing_tools)
-        return []
-
     devices: list[models.Device] = []
-    info_missing_tools: set[str] = set()
-    for entry in discovered:
-        udid = entry["udid"]
-        connection = entry.get("connection")
-        try:
-            info = get_info(udid, allow_discovery=False)
-        except DeviceToolMissingError as exc:
-            info_missing_tools.update(exc.tools)
-            info = _build_device({}, udid=udid, connection=connection)
-        except DeviceError as exc:
-            log.debug("get_info fallback for %s: %s", udid, exc)
-            info = _build_device({}, udid=udid, connection=connection)
-        else:
-            if connection and info.connection == "unknown":
-                info = info.model_copy(update={"connection": _normalize_connection(connection)})
-        devices.append(info)
 
-    if info_missing_tools:
-        raise DeviceToolMissingError(info_missing_tools)
+    if not discovered:
+        if not any_tool and missing_tools:
+            raise DeviceToolMissingError(missing_tools)
+    else:
+        info_missing_tools: set[str] = set()
+        for entry in discovered:
+            udid = entry["udid"]
+            connection = entry.get("connection")
+            try:
+                info = get_info(udid, allow_discovery=False)
+            except DeviceToolMissingError as exc:
+                info_missing_tools.update(exc.tools)
+                info = _build_device({}, udid=udid, connection=connection)
+            except DeviceError as exc:
+                log.debug("get_info fallback for %s: %s", udid, exc)
+                info = _build_device({}, udid=udid, connection=connection)
+            else:
+                if connection and info.connection == "unknown":
+                    info = info.model_copy(update={"connection": _normalize_connection(connection)})
+            devices.append(info)
+
+        if info_missing_tools:
+            raise DeviceToolMissingError(info_missing_tools)
+
+    if include_dfu and detect_dfu():
+        if not any(existing.mode == "dfu" for existing in devices):
+            devices.append(
+                models.Device.model_construct(
+                    udid=None,
+                    product_type=None,
+                    product_version=None,
+                    device_name="(DFU device)",
+                    connection="usb",
+                    mode="dfu",
+                    details={},
+                )
+            )
 
     return devices
 
@@ -311,22 +341,64 @@ def get_info(udid: Optional[str] = None, *, allow_discovery: bool = True) -> mod
 
 
 def diag_usb():
-    result = _call(["sc", "query", "Apple Mobile Device Service"], timeout=5)
-    amds_running = "RUNNING" in result.stdout.upper()
+    def _query_amds_status() -> Tuple[bool, Optional[str], Optional[str]]:
+        error_text = None
+        ps_cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "(Get-Service 'Apple Mobile Device Service' -ErrorAction Stop).Status",
+        ]
+        try:
+            completed = subprocess.run(ps_cmd, capture_output=True, text=True, timeout=5)
+            if completed.returncode == 0 and completed.stdout:
+                status = completed.stdout.strip()
+                if status:
+                    return status.upper() == "RUNNING", status, None
+        except Exception as exc:  # pragma: no cover - PowerShell not available
+            error_text = str(exc)
+            log.debug("PowerShell AMDS check failed: %s", exc)
+
+        fallback = _call(["sc", "query", "Apple Mobile Device Service"], timeout=5)
+        if fallback.code == 0:
+            status_text = fallback.stdout.strip()
+            return "RUNNING" in status_text.upper(), status_text, error_text
+        return False, None, fallback.stderr or error_text
+
+    amds_running, amds_status, amds_error = _query_amds_status()
+
+    tool_list = [
+        "idevice_id",
+        "ideviceinfo",
+        "idevicesyslog",
+        "idevicecrashreport",
+        "irecovery",
+        "idevicerestore",
+    ]
+
+    missing_tools = [tool for tool in tool_list if not _have(tool)]
+    have_idevice_tools = _have("idevice_id") and _have("ideviceinfo")
+    have_irecovery = _have("irecovery")
+    have_idevicerestore = _have("idevicerestore")
+
+    path_value = os.environ.get("PATH", "")
+    path_hint = path_value if len(path_value) <= 200 else f"{path_value[:197]}..."
+
     data = {
         "amds_running": amds_running,
-        "have_idevice_tools": _have("idevice_id") and _have("ideviceinfo"),
-        "have_irecovery": _have("irecovery"),
-        "have_idevicerestore": _have("idevicerestore"),
-        "missing_tools": [],
+        "amds_status": amds_status,
+        "have_idevice_tools": have_idevice_tools,
+        "have_irecovery": have_irecovery,
+        "have_idevicerestore": have_idevicerestore,
+        "missing_tools": missing_tools,
+        "tools_checked": tool_list,
+        "path": path_hint,
     }
 
-    if not _have("idevice_id"):
-        data["missing_tools"].append("idevice_id")
-    if not _have("ideviceinfo"):
-        data["missing_tools"].append("ideviceinfo")
-    if not _have("irecovery"):
-        data["missing_tools"].append("irecovery")
-    if not _have("idevicerestore"):
-        data["missing_tools"].append("idevicerestore")
+    if amds_error:
+        data["amds_error"] = amds_error
+
+    if not have_irecovery:
+        data["notes"] = "DFU/Recovery erfordert irecovery/libusb"
+
     return data

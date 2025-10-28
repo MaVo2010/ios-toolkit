@@ -9,9 +9,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, device, logs, recovery, restore, models, utils
+from ios_toolkit import __version__, device, dfu, ipsw, logs, models, recovery, restore, utils
 
 app = typer.Typer(help="Windows CLI-Tool: iOS-Geraete erkennen, Logs, Recovery/DFU, Flashen")
+ipsw_app = typer.Typer(help="IPSW Utilities")
+dfu_app = typer.Typer(help="DFU-Assistent")
+app.add_typer(ipsw_app, name="ipsw")
+app.add_typer(dfu_app, name="dfu")
 console = Console()
 
 
@@ -27,6 +31,64 @@ def _main_callback(
 
 def echo_json(data):
     typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+@ipsw_app.command("verify")
+def ipsw_verify_cmd(
+    file: str = typer.Option(..., "--file", help="Pfad zur IPSW-Datei"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    result = ipsw.validate_ipsw(file)
+    if json_out:
+        echo_json(result)
+    else:
+        if result["ok"]:
+            typer.echo(f"IPSW OK | size={result['size']} | sha1={result['sha1']}")
+            if result.get("has_manifest"):
+                product = ipsw.product_from_manifest(file)
+                if product:
+                    typer.echo(f"Product: {product}")
+        else:
+            typer.echo(f"Validation failed: {result.get('error', 'unknown error')}", err=True)
+    raise typer.Exit(0 if result["ok"] else 2)
+
+
+@dfu_app.command("guide")
+def dfu_guide_cmd(
+    ctx: typer.Context,
+    udid: str = typer.Option(None, "--udid", help="UDID des Geraets (optional)"),
+    model: str = typer.Option(None, "--model", help="Produkt-Typ, z. B. iPhone12,8"),
+    countdown: bool = typer.Option(False, "--countdown/--no-countdown", help="Countdown je Schritt anzeigen"),
+    sound: bool = typer.Option(False, "--sound/--no-sound", help="Akustische Signale verwenden"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    product_type = model
+    if udid and not product_type:
+        try:
+            info = device.get_info(udid=udid)
+            product_type = info.product_type
+        except device.DeviceError as exc:
+            typer.echo(f"Konnte Geraeteinfo nicht abrufen: {exc}", err=True)
+            raise typer.Exit(1)
+
+    if not product_type:
+        typer.echo("Bitte --model angeben oder --udid verwenden.", err=True)
+        raise typer.Exit(2)
+
+    try:
+        if json_out:
+            instructions = dfu.get_instructions(product_type)
+            echo_json(instructions)
+        else:
+            dfu.guide(product_type=product_type, udid=udid, countdown=countdown, sound=sound)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2)
+    except Exception as exc:  # pragma: no cover - defensive
+        log = utils.get_logger(__name__)
+        log.error("DFU-Assistent fehlgeschlagen: %s", exc)
+        typer.echo(f"Fehler: {exc}", err=True)
+        raise typer.Exit(1)
 
 
 def _emit_device_error(exc: device.DeviceError, json_out: bool) -> None:
@@ -56,9 +118,12 @@ def version(json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe"))
         typer.echo(f"ios-toolkit v{__version__}")
 
 @app.command(name="list")
-def list_cmd(json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe")):
+def list_cmd(
+    json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe"),
+    include_dfu: bool = typer.Option(False, "--include-dfu", help="DFU-Geraete via irecovery einbeziehen"),
+):
     try:
-        devices = device.list_devices()
+        devices = device.list_devices(include_dfu=include_dfu)
     except device.DeviceError as exc:
         _emit_device_error(exc, json_out)
         return
@@ -197,3 +262,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

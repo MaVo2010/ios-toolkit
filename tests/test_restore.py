@@ -31,7 +31,10 @@ def _fresh_dir() -> Path:
 def _make_ipsw(base_dir: Path, name: str = "firmware.ipsw") -> Path:
     path = base_dir / name
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("manifest.plist", "<plist/>")
+        zf.writestr(
+            "BuildManifest.plist",
+            "<plist><dict><key>ProductType</key><string>iPhone12,8</string></dict></plist>",
+        )
     return path
 
 
@@ -44,6 +47,7 @@ def test_preflight_tool_missing(monkeypatch):
     checks = restore.preflight_checks(udid=None, ipsw_path=str(ipsw))
     assert checks["ok"] is False
     assert any(not c["ok"] and c["name"] == "check_idevicerestore" for c in checks["checks"])
+    assert any(c["name"] == "ipsw_validated" for c in checks["checks"])
     shutil.rmtree(work_dir, ignore_errors=True)
 
 
@@ -55,7 +59,7 @@ def test_restore_validation_ipsw_missing(monkeypatch):
     missing = work_dir / "missing.ipsw"
     result = restore.restore(ipsw_path=str(missing), preflight_only=True)
     assert result.status == "failure"
-    assert any(step.name == "validate_ipsw" and not step.ok for step in result.steps)
+    assert any(step.name == "ipsw_validated" and not step.ok for step in result.steps)
     assert restore.is_validation_failure(result) is True
     shutil.rmtree(work_dir, ignore_errors=True)
 
@@ -69,6 +73,7 @@ def test_restore_preflight_only_success(monkeypatch):
     result = restore.restore(ipsw_path=str(ipsw), preflight_only=True, log_dir=str(work_dir))
     assert result.status == "success"
     assert any(step.name == "preflight" and step.ok for step in result.steps)
+    assert any(step.name == "ipsw_validated" and step.ok for step in result.steps)
     shutil.rmtree(work_dir, ignore_errors=True)
 
 
