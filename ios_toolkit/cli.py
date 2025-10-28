@@ -118,9 +118,12 @@ def version(json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe"))
         typer.echo(f"ios-toolkit v{__version__}")
 
 @app.command(name="list")
-def list_cmd(json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe")):
+def list_cmd(
+    json_out: bool = typer.Option(False, "--json", help="JSON-Ausgabe"),
+    include_dfu: bool = typer.Option(False, "--include-dfu", help="DFU-Geraete via irecovery einbeziehen"),
+):
     try:
-        devices = device.list_devices()
+        devices = device.list_devices(include_dfu=include_dfu)
     except device.DeviceError as exc:
         _emit_device_error(exc, json_out)
         return

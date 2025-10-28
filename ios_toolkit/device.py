@@ -61,6 +61,23 @@ def _have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
+def detect_dfu() -> bool:
+    """Return True if irecovery reports DFU mode; never raises."""
+    if not _have("irecovery"):
+        return False
+
+    result = _call(["irecovery", "-q"])
+    if not result.ok or not result.stdout:
+        return False
+
+    kv = _parse_kv_text(result.stdout)
+    mode_value = kv.get("MODE") or kv.get("Mode") or kv.get("mode")
+    if mode_value and mode_value.strip().lower() == "dfu":
+        return True
+
+    return False
+
+
 def _call(cmd: Sequence[str], timeout: int = 10) -> CommandResult:
     try:
         completed = subprocess.run(
@@ -215,35 +232,47 @@ def _discover_devices() -> Tuple[list[dict], list[str], bool]:
     return list(devices.values()), missing_tools, any_tool_available
 
 
-def list_devices() -> list[models.Device]:
+def list_devices(include_dfu: bool = False) -> list[models.Device]:
     discovered, missing_tools, any_tool = _discover_devices()
-    if not discovered:
-        if not any_tool:
-            # Without any discovery tooling we cannot proceed.
-            if missing_tools:
-                raise DeviceToolMissingError(missing_tools)
-        return []
-
     devices: list[models.Device] = []
-    info_missing_tools: set[str] = set()
-    for entry in discovered:
-        udid = entry["udid"]
-        connection = entry.get("connection")
-        try:
-            info = get_info(udid, allow_discovery=False)
-        except DeviceToolMissingError as exc:
-            info_missing_tools.update(exc.tools)
-            info = _build_device({}, udid=udid, connection=connection)
-        except DeviceError as exc:
-            log.debug("get_info fallback for %s: %s", udid, exc)
-            info = _build_device({}, udid=udid, connection=connection)
-        else:
-            if connection and info.connection == "unknown":
-                info = info.model_copy(update={"connection": _normalize_connection(connection)})
-        devices.append(info)
 
-    if info_missing_tools:
-        raise DeviceToolMissingError(info_missing_tools)
+    if not discovered:
+        if not any_tool and missing_tools:
+            raise DeviceToolMissingError(missing_tools)
+    else:
+        info_missing_tools: set[str] = set()
+        for entry in discovered:
+            udid = entry["udid"]
+            connection = entry.get("connection")
+            try:
+                info = get_info(udid, allow_discovery=False)
+            except DeviceToolMissingError as exc:
+                info_missing_tools.update(exc.tools)
+                info = _build_device({}, udid=udid, connection=connection)
+            except DeviceError as exc:
+                log.debug("get_info fallback for %s: %s", udid, exc)
+                info = _build_device({}, udid=udid, connection=connection)
+            else:
+                if connection and info.connection == "unknown":
+                    info = info.model_copy(update={"connection": _normalize_connection(connection)})
+            devices.append(info)
+
+        if info_missing_tools:
+            raise DeviceToolMissingError(info_missing_tools)
+
+    if include_dfu and detect_dfu():
+        if not any(existing.mode == "dfu" for existing in devices):
+            devices.append(
+                models.Device.model_construct(
+                    udid=None,
+                    product_type=None,
+                    product_version=None,
+                    device_name="(DFU device)",
+                    connection="usb",
+                    mode="dfu",
+                    details={},
+                )
+            )
 
     return devices
 
