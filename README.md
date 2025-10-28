@@ -19,6 +19,9 @@ py -m ios_toolkit.cli --help
 - Ausgabe enthaelt SHA1, Dateigroesse und Manifest-Status.
 
 ## Troubleshooting (M6)
-- Diagnose USB: `py -m ios_toolkit.cli diag usb --json`
+- Diagnose USB (JSON): `py -m ios_toolkit.cli diag usb --json`
+- Diagnose USB (Text): `py -m ios_toolkit.cli diag usb`
+  - Meldet Status des Apple Mobile Device Service (AMDS), listet gefundene/fehlende Tools inkl. Versionen, DFU/Recovery-Heuristik, Host-Fakten (PnP, freier Speicher) sowie bis zu drei Hinweise.
+  - Exit-Code 0 bei erfolgreicher Diagnose, 1 nur falls der Aufruf selbst scheitert.
 - DFU-Anleitung: `py -m ios_toolkit.cli dfu guide --model iPhone12,8`
 - Status pruefen: `py -m ios_toolkit.cli recovery status --json`

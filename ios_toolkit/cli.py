@@ -247,12 +247,55 @@ def flash(
 @app.command()
 def diag(sub: str = typer.Argument(..., help="usb"), json_out: bool = typer.Option(False, "--json")):
     if sub == "usb":
-        data = device.diag_usb()
+        try:
+            data = device.diag_usb()
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            typer.echo(f"Diagnose fehlgeschlagen: {exc}", err=True)
+            raise typer.Exit(1)
+
         if json_out:
             echo_json(data)
-        else:
-            for k, v in data.items():
-                typer.echo(f"{k}: {v}")
+            raise typer.Exit(0)
+
+        amds = data.get("amds", {})
+        tools = data.get("tools", {})
+        usb_info = data.get("usb", {})
+        host = data.get("host", {})
+        hints = data.get("hints") or []
+
+        status_text = amds.get("status") or "unbekannt"
+        running_text = "laufend" if amds.get("running") else "gestoppt"
+        typer.echo(f"AMDS: {status_text} ({running_text})")
+
+        found_tools = [
+            f"{entry['name']}{' (' + entry['version'] + ')' if entry.get('version') else ''}"
+            for entry in tools.get("entries", [])
+            if entry.get("found")
+        ]
+        typer.echo("Gefundene Tools: " + (", ".join(found_tools) if found_tools else "keine"))
+
+        missing = tools.get("missing") or []
+        if missing:
+            typer.echo("Fehlende Tools: " + ", ".join(missing))
+
+        usb_parts = [
+            f"DFU={'ja' if usb_info.get('dfu_detected') else 'nein'}",
+            f"Recovery={'ja' if usb_info.get('recovery_detected') else 'nein'}",
+            f"irecovery={'verfuegbar' if usb_info.get('irecovery_available') else 'nicht vorhanden'}",
+        ]
+        typer.echo("USB: " + ", ".join(usb_parts))
+
+        disk_free = host.get("disk_free_gb")
+        disk_text = f"{disk_free} GB frei" if disk_free is not None else "unbekannt"
+        pnp_text = "ja" if host.get("apple_pnp_present") else "nein"
+        typer.echo(f"Host: Speicher {disk_text}, Apple-PnP: {pnp_text}")
+
+        if hints:
+            typer.echo("Hinweise:")
+            for hint in hints[:3]:
+                typer.echo(f"- {hint}")
+
+        raise typer.Exit(0)
     else:
         typer.echo("Unbekannte Diagnose. Nutze: usb")
         raise typer.Exit(2)

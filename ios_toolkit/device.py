@@ -4,9 +4,11 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
 
 from . import models, utils
+from .recovery import parse_irecovery_q
 
 log = utils.get_logger(__name__)
 
@@ -70,12 +72,8 @@ def detect_dfu() -> bool:
     if not result.ok or not result.stdout:
         return False
 
-    kv = _parse_kv_text(result.stdout)
-    mode_value = kv.get("MODE") or kv.get("Mode") or kv.get("mode")
-    if mode_value and mode_value.strip().lower() == "dfu":
-        return True
-
-    return False
+    parsed = parse_irecovery_q(result.stdout)
+    return str(parsed.get("mode", "")).strip().lower() == "dfu"
 
 
 def _call(cmd: Sequence[str], timeout: int = 10) -> CommandResult:
@@ -340,9 +338,18 @@ def get_info(udid: Optional[str] = None, *, allow_discovery: bool = True) -> mod
     raise DeviceError(f"Konnte keine Informationen fuer {udid} abrufen.", exit_code=6)
 
 
-def diag_usb():
-    def _query_amds_status() -> Tuple[bool, Optional[str], Optional[str]]:
-        error_text = None
+def diag_usb() -> Dict[str, Any]:
+    tools_to_check = [
+        "idevice_id",
+        "ideviceinfo",
+        "idevicesyslog",
+        "idevicecrashreport",
+        "irecovery",
+        "idevicerestore",
+    ]
+
+    def _query_amds_status() -> Dict[str, Any]:
+        amds: Dict[str, Any] = {"running": False, "status": None, "error": None, "source": None}
         ps_cmd = [
             "powershell",
             "-NoProfile",
@@ -354,51 +361,165 @@ def diag_usb():
             if completed.returncode == 0 and completed.stdout:
                 status = completed.stdout.strip()
                 if status:
-                    return status.upper() == "RUNNING", status, None
+                    amds["status"] = status
+                    amds["running"] = status.upper() == "RUNNING"
+                    amds["source"] = "powershell"
+                    return amds
         except Exception as exc:  # pragma: no cover - PowerShell not available
-            error_text = str(exc)
+            amds["error"] = str(exc)
             log.debug("PowerShell AMDS check failed: %s", exc)
 
         fallback = _call(["sc", "query", "Apple Mobile Device Service"], timeout=5)
-        if fallback.code == 0:
+        if fallback.code == 0 and fallback.stdout:
             status_text = fallback.stdout.strip()
-            return "RUNNING" in status_text.upper(), status_text, error_text
-        return False, None, fallback.stderr or error_text
+            amds["status"] = status_text
+            amds["running"] = "RUNNING" in status_text.upper()
+            amds["source"] = "sc"
+            if not amds.get("error"):
+                amds["error"] = None
+        else:
+            fallback_error = fallback.stderr or (f"exit code {fallback.code}" if fallback.code else None)
+            if fallback_error:
+                amds["error"] = fallback_error if amds.get("error") is None else amds["error"]
+        return amds
 
-    amds_running, amds_status, amds_error = _query_amds_status()
+    def _probe_tool_version(executable: str) -> Optional[str]:
+        for args in ([executable, "--version"], [executable, "-V"]):
+            result = _call(args, timeout=5)
+            text = (result.stdout or "").strip() or (result.stderr or "").strip()
+            if text:
+                return text.splitlines()[0][:200]
+        return None
 
-    tool_list = [
-        "idevice_id",
-        "ideviceinfo",
-        "idevicesyslog",
-        "idevicecrashreport",
-        "irecovery",
-        "idevicerestore",
-    ]
+    def _collect_tools() -> Dict[str, Any]:
+        entries: list[Dict[str, Any]] = []
+        missing: list[str] = []
+        for tool in tools_to_check:
+            path = shutil.which(tool)
+            entry: Dict[str, Any] = {"name": tool, "found": bool(path), "path": path, "version": None}
+            if path:
+                version = _probe_tool_version(path)
+                if version:
+                    entry["version"] = version
+            else:
+                missing.append(tool)
+            entries.append(entry)
+        return {"checked": tools_to_check, "entries": entries, "missing": missing}
 
-    missing_tools = [tool for tool in tool_list if not _have(tool)]
-    have_idevice_tools = _have("idevice_id") and _have("ideviceinfo")
-    have_irecovery = _have("irecovery")
-    have_idevicerestore = _have("idevicerestore")
+    def _gather_usb_info(irecovery_available: bool) -> Dict[str, Any]:
+        usb_info: Dict[str, Any] = {
+            "irecovery_available": irecovery_available,
+            "dfu_detected": False,
+            "recovery_detected": False,
+            "irecovery": None,
+            "error": None,
+        }
+        if not irecovery_available:
+            return usb_info
 
-    path_value = os.environ.get("PATH", "")
-    path_hint = path_value if len(path_value) <= 200 else f"{path_value[:197]}..."
+        result = _call(["irecovery", "-q"], timeout=5)
+        if result.ok and result.stdout:
+            parsed = parse_irecovery_q(result.stdout)
+            usb_info["irecovery"] = parsed
+            mode = str(parsed.get("mode", "")).strip().lower()
+            if mode == "dfu":
+                usb_info["dfu_detected"] = True
+            if mode == "recovery":
+                usb_info["recovery_detected"] = True
+            device_state = parsed.get("device_state")
+            if isinstance(device_state, str):
+                lowered = device_state.lower()
+                if "dfu" in lowered:
+                    usb_info["dfu_detected"] = True
+                if "recovery" in lowered:
+                    usb_info["recovery_detected"] = True
+        else:
+            usb_info["error"] = result.stderr or "irecovery -q failed"
+        return usb_info
 
-    data = {
-        "amds_running": amds_running,
-        "amds_status": amds_status,
-        "have_idevice_tools": have_idevice_tools,
-        "have_irecovery": have_irecovery,
-        "have_idevicerestore": have_idevicerestore,
-        "missing_tools": missing_tools,
-        "tools_checked": tool_list,
-        "path": path_hint,
+    def _detect_apple_pnp() -> Dict[str, Any]:
+        data: Dict[str, Any] = {"present": False, "raw": None, "error": None}
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-PnpDevice | Where-Object { $_.InstanceId -like 'USB\\\\VID_05AC*' } | "
+            "Select-Object -First 1 | Out-String",
+        ]
+        try:
+            completed = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            output = (completed.stdout or "").strip()
+            data["raw"] = output or None
+            if completed.returncode == 0:
+                data["present"] = bool(output)
+            else:
+                data["error"] = (completed.stderr or "").strip() or f"exit code {completed.returncode}"
+        except Exception as exc:  # pragma: no cover - PowerShell not available
+            data["error"] = str(exc)
+            log.debug("PowerShell PnP query failed: %s", exc)
+        return data
+
+    def _collect_host_info() -> Dict[str, Any]:
+        path_value = os.environ.get("PATH", "")
+        path_preview = path_value if len(path_value) <= 120 else f"{path_value[:117]}..."
+        host: Dict[str, Any] = {
+            "path_preview": path_preview,
+            "path_length": len(path_value),
+        }
+        try:
+            anchor = Path.cwd().anchor or str(Path.cwd().resolve())
+            usage = shutil.disk_usage(anchor)
+            host["disk_free_gb"] = round(usage.free / (1024**3), 2)
+        except Exception as exc:  # pragma: no cover - not expected
+            host["disk_free_gb"] = None
+            host["disk_error"] = str(exc)
+
+        pnp_info = _detect_apple_pnp()
+        host["apple_pnp_present"] = pnp_info["present"]
+        if pnp_info.get("raw"):
+            host["apple_pnp_sample"] = pnp_info["raw"]
+        if pnp_info.get("error"):
+            host["apple_pnp_error"] = pnp_info["error"]
+        return host
+
+    def _build_hints(
+        amds_info: Dict[str, Any], tools_info: Dict[str, Any], usb_info: Dict[str, Any], host_info: Dict[str, Any]
+    ) -> list[str]:
+        hints: list[str] = []
+        if tools_info["missing"]:
+            hints.append(
+                "Fehlende Tools: "
+                + ", ".join(tools_info["missing"])
+                + " - bitte libimobiledevice/irecovery installieren."
+            )
+        if not amds_info.get("running"):
+            hints.append("Apple Mobile Device Service laeuft nicht; starte den Dienst oder installiere iTunes.")
+        if usb_info.get("dfu_detected"):
+            hints.append("DFU erkannt: 'list' zeigt DFU i. d. R. nicht; nutze 'recovery status' oder '--include-dfu'.")
+        elif usb_info.get("recovery_detected"):
+            hints.append("Recovery-Modus erkannt: pruefe 'recovery status' fuer weitere Details.")
+        if not host_info.get("apple_pnp_present"):
+            hints.append("Keine Apple USB-Geraete via PnP gefunden; pruefe Kabel und USB-Port.")
+
+        # Deduplicate while keeping order
+        unique_hints: list[str] = []
+        seen: set[str] = set()
+        for hint in hints:
+            if hint not in seen:
+                unique_hints.append(hint)
+                seen.add(hint)
+        return unique_hints
+
+    amds_info = _query_amds_status()
+    tools_info = _collect_tools()
+    host_info = _collect_host_info()
+    usb_info = _gather_usb_info(any(entry["found"] for entry in tools_info["entries"] if entry["name"] == "irecovery"))
+    hints = _build_hints(amds_info, tools_info, usb_info, host_info)
+
+    return {
+        "amds": amds_info,
+        "tools": tools_info,
+        "usb": usb_info,
+        "host": host_info,
+        "hints": hints,
     }
-
-    if amds_error:
-        data["amds_error"] = amds_error
-
-    if not have_irecovery:
-        data["notes"] = "DFU/Recovery erfordert irecovery/libusb"
-
-    return data
