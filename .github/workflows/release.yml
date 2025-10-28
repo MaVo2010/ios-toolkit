@@ -26,12 +26,12 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Build EXE (PyInstaller)
-        run: |
-          python -m PyInstaller --noconfirm --clean --onefile ^
-            --name ios-toolkit ^
-            --collect-all pymobiledevice3 ^
-            --collect-submodules ios_toolkit ^
-            ios_toolkit/cli.py
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile
+          --name ios-toolkit
+          --collect-all pymobiledevice3
+          --collect-submodules ios_toolkit
+          ios_toolkit/cli.py
 
       - name: Smoke test EXE
         run: |
@@ -60,5 +60,4 @@ jobs:
           files: |
             dist/ios-toolkit.exe
           generate_release_notes: true
-
 
