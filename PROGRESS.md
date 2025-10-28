@@ -84,11 +84,13 @@
 ## M6 - DFU & Diagnose
 - `ios_toolkit/dfu.py` liefert modellbasierte DFU-Anleitungen und einen interaktiven Guide (Countdown/Sound optional).
 - CLI `dfu guide` unterstuetzt `--model`/`--udid`, JSON-Ausgabe sowie interaktive Fuehrung.
-- USB-Diagnose (`diag usb`) prueft AMDS-Service ueber PowerShell/`sc`, listet fehlende Tools und gibt PATH-Hinweise aus.
+- USB-Diagnose (`diag usb`) aggregiert AMDS-Status (PowerShell + `sc` Fallback), Tool-Verfuegbarkeit inkl. Versionen, DFU/Recovery-Heuristik via `irecovery -q`, Apple-PnP-Indikatoren und Host-Fakten (PATH/Disk/USB).
+- CLI `list` bietet mit `--include-dfu` eine DFU-Erkennung via `irecovery -q` an und zeigt ein Platzhaltergeraet im DFU-Modus.
 
 ### Tests
 - `py -m ruff check .`
 - `py -m pytest -q`
+- Unit-Tests fuer Diagnose und DFU-List-Option (`tests/test_diag.py`, `tests/test_device_dfu.py`).
 
 ### Beispielausgaben
 - `py -m ios_toolkit.cli dfu guide --model iPhone12,8 --json`
