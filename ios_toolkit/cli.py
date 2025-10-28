@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__, device, dfu, ipsw, logs, models, recovery, restore, utils
+from ios_toolkit import __version__, device, dfu, ipsw, logs, models, recovery, restore, utils
 
 app = typer.Typer(help="Windows CLI-Tool: iOS-Geraete erkennen, Logs, Recovery/DFU, Flashen")
 ipsw_app = typer.Typer(help="IPSW Utilities")
@@ -259,3 +259,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

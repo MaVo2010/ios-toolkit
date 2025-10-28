@@ -93,3 +93,18 @@
 ### Beispielausgaben
 - `py -m ios_toolkit.cli dfu guide --model iPhone12,8 --json`
 - `py -m ios_toolkit.cli diag usb --json`
+
+## M7 - Packaging & Releases
+- PyInstaller Build-Skript (`scripts/build_windows.ps1`) erstellt eine portable Windows-EXE.
+- GitHub Actions Workflow `release.yml` baut bei Tags (`v*`) und haengt `ios-toolkit.exe` an Releases an.
+- Version auf 0.6.0 erhoeht; Anforderungen in `pyproject.toml`/`requirements-dev.txt` angepasst.
+
+### Tests
+- `py -m ruff check .`
+- `py -m pytest -q`
+- `pwsh scripts/build_windows.ps1`
+
+### Beispielausgaben
+- `.\dist\ios-toolkit.exe --help`
+- `.\dist\ios-toolkit.exe list --json`
+
