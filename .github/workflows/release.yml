@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -60,4 +63,3 @@ jobs:
           files: |
             dist/ios-toolkit.exe
           generate_release_notes: true
-
